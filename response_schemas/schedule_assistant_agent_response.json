@@ -1,0 +1,24 @@
+{
+  "agent_name": "Schedule Assistant Agent",
+  "agent_id": "69a06de2065e1e60f38a3442",
+  "description": "Interprets natural language schedule inputs from users, confirms planned in-office days, queries stored team schedule data to identify teammate overlaps, and returns team presence summaries grouped by department. Handles schedule updates and removals via conversational interaction.",
+  "agent_type": "json",
+  "accessor": "result",
+  "auto_generated": true,
+  "response_schema": {
+    "message": "string",
+    "action": "string",
+    "days": [
+      "string"
+    ],
+    "summary": "string"
+  },
+  "example_response": {
+    "message": "The assistant's conversational response to the user",
+    "action": "The action type: mark_days, remove_days, query_presence, general_response",
+    "days": [
+      "sample string"
+    ],
+    "summary": "Brief summary of what was done or the query result"
+  }
+}

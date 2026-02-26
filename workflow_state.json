@@ -1,0 +1,11 @@
+{
+  "agents": {
+    "schedule_assistant": {
+      "agent_id": "69a06de2065e1e60f38a3442",
+      "name": "Schedule Assistant Agent",
+      "type": "single",
+      "model": "gpt-4.1",
+      "provider": "openai"
+    }
+  }
+}
