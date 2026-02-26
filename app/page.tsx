@@ -14,10 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Label } from '@/components/ui/label'
-import { FiCalendar, FiUsers, FiSettings, FiChevronLeft, FiChevronRight, FiSend, FiSearch, FiMessageSquare, FiMenu } from 'react-icons/fi'
+import { Progress } from '@/components/ui/progress'
+import { FiCalendar, FiUsers, FiSettings, FiChevronLeft, FiChevronRight, FiSend, FiSearch, FiMessageSquare, FiMenu, FiSun, FiMoon, FiClock, FiUpload, FiFile, FiCheck, FiX, FiDownload } from 'react-icons/fi'
 import { HiOutlineOfficeBuilding } from 'react-icons/hi'
 import { BsPersonWorkspace } from 'react-icons/bs'
-import { addWeeks, startOfWeek, addDays, format } from 'date-fns'
+import { addWeeks, startOfWeek, addDays, format, addMonths, startOfMonth, differenceInWeeks, getDaysInMonth, getDay } from 'date-fns'
 
 // ────────────────────────────────────────────
 // Constants
@@ -45,15 +46,38 @@ const DEPT_BG_CLASSES: Record<string, string> = {
   HR: 'bg-rose-100 text-rose-800',
 }
 
+type ShiftType = 'Morning' | 'Afternoon' | 'Full Day' | 'Night'
+
+const SHIFT_TYPES: ShiftType[] = ['Morning', 'Afternoon', 'Full Day', 'Night']
+
+const SHIFT_COLORS: Record<string, string> = {
+  'Morning': 'bg-amber-100 text-amber-700',
+  'Afternoon': 'bg-blue-100 text-blue-700',
+  'Full Day': 'bg-emerald-100 text-emerald-700',
+  'Night': 'bg-indigo-100 text-indigo-700',
+}
+
+const SHIFT_LABELS_SHORT: Record<string, string> = {
+  'Morning': 'AM',
+  'Afternoon': 'PM',
+  'Full Day': 'All',
+  'Night': 'Eve',
+}
+
 // ────────────────────────────────────────────
 // Types
 // ────────────────────────────────────────────
+
+interface ShiftEntry {
+  shift: ShiftType
+}
 
 interface TeamMember {
   id: string
   name: string
   department: string
-  scheduledDays: string[]
+  email?: string
+  scheduledDays: { day: string; shift: string }[]
 }
 
 interface ChatMessage {
@@ -66,25 +90,25 @@ interface ChatMessage {
 type ActiveView = 'schedule' | 'team' | 'settings'
 
 // ────────────────────────────────────────────
-// Mock Data
+// Mock Data (updated with shift info)
 // ────────────────────────────────────────────
 
 const MOCK_TEAM_DATA: TeamMember[] = [
-  { id: '1', name: 'Sarah Chen', department: 'Engineering', scheduledDays: ['Monday', 'Tuesday', 'Thursday'] },
-  { id: '2', name: 'James Wilson', department: 'Engineering', scheduledDays: ['Monday', 'Wednesday', 'Friday'] },
-  { id: '3', name: 'Maria Garcia', department: 'Engineering', scheduledDays: ['Tuesday', 'Wednesday', 'Thursday'] },
-  { id: '4', name: 'Alex Kim', department: 'Design', scheduledDays: ['Monday', 'Tuesday', 'Friday'] },
-  { id: '5', name: 'Emily Brown', department: 'Design', scheduledDays: ['Wednesday', 'Thursday'] },
-  { id: '6', name: 'David Lee', department: 'Marketing', scheduledDays: ['Monday', 'Thursday', 'Friday'] },
-  { id: '7', name: 'Lisa Wang', department: 'Marketing', scheduledDays: ['Tuesday', 'Wednesday'] },
-  { id: '8', name: 'Michael Park', department: 'Sales', scheduledDays: ['Monday', 'Wednesday', 'Thursday'] },
-  { id: '9', name: 'Sophie Taylor', department: 'Sales', scheduledDays: ['Tuesday', 'Friday'] },
-  { id: '10', name: 'Ryan Johnson', department: 'HR', scheduledDays: ['Monday', 'Tuesday', 'Wednesday'] },
-  { id: '11', name: 'Anna Martinez', department: 'Engineering', scheduledDays: ['Monday', 'Wednesday', 'Friday'] },
-  { id: '12', name: 'Tom Zhang', department: 'Design', scheduledDays: ['Tuesday', 'Thursday', 'Friday'] },
-  { id: '13', name: 'Rachel Adams', department: 'Marketing', scheduledDays: ['Monday', 'Tuesday', 'Thursday'] },
-  { id: '14', name: 'Kevin Patel', department: 'Sales', scheduledDays: ['Wednesday', 'Thursday', 'Friday'] },
-  { id: '15', name: 'Jessica Liu', department: 'HR', scheduledDays: ['Tuesday', 'Thursday'] },
+  { id: '1', name: 'Sarah Chen', department: 'Engineering', scheduledDays: [{ day: 'Monday', shift: 'Full Day' }, { day: 'Tuesday', shift: 'Morning' }, { day: 'Thursday', shift: 'Afternoon' }] },
+  { id: '2', name: 'James Wilson', department: 'Engineering', scheduledDays: [{ day: 'Monday', shift: 'Morning' }, { day: 'Wednesday', shift: 'Full Day' }, { day: 'Friday', shift: 'Morning' }] },
+  { id: '3', name: 'Maria Garcia', department: 'Engineering', scheduledDays: [{ day: 'Tuesday', shift: 'Full Day' }, { day: 'Wednesday', shift: 'Afternoon' }, { day: 'Thursday', shift: 'Full Day' }] },
+  { id: '4', name: 'Alex Kim', department: 'Design', scheduledDays: [{ day: 'Monday', shift: 'Full Day' }, { day: 'Tuesday', shift: 'Afternoon' }, { day: 'Friday', shift: 'Full Day' }] },
+  { id: '5', name: 'Emily Brown', department: 'Design', scheduledDays: [{ day: 'Wednesday', shift: 'Morning' }, { day: 'Thursday', shift: 'Full Day' }] },
+  { id: '6', name: 'David Lee', department: 'Marketing', scheduledDays: [{ day: 'Monday', shift: 'Afternoon' }, { day: 'Thursday', shift: 'Morning' }, { day: 'Friday', shift: 'Full Day' }] },
+  { id: '7', name: 'Lisa Wang', department: 'Marketing', scheduledDays: [{ day: 'Tuesday', shift: 'Full Day' }, { day: 'Wednesday', shift: 'Night' }] },
+  { id: '8', name: 'Michael Park', department: 'Sales', scheduledDays: [{ day: 'Monday', shift: 'Full Day' }, { day: 'Wednesday', shift: 'Morning' }, { day: 'Thursday', shift: 'Afternoon' }] },
+  { id: '9', name: 'Sophie Taylor', department: 'Sales', scheduledDays: [{ day: 'Tuesday', shift: 'Morning' }, { day: 'Friday', shift: 'Afternoon' }] },
+  { id: '10', name: 'Ryan Johnson', department: 'HR', scheduledDays: [{ day: 'Monday', shift: 'Full Day' }, { day: 'Tuesday', shift: 'Full Day' }, { day: 'Wednesday', shift: 'Morning' }] },
+  { id: '11', name: 'Anna Martinez', department: 'Engineering', scheduledDays: [{ day: 'Monday', shift: 'Afternoon' }, { day: 'Wednesday', shift: 'Full Day' }, { day: 'Friday', shift: 'Night' }] },
+  { id: '12', name: 'Tom Zhang', department: 'Design', scheduledDays: [{ day: 'Tuesday', shift: 'Full Day' }, { day: 'Thursday', shift: 'Morning' }, { day: 'Friday', shift: 'Full Day' }] },
+  { id: '13', name: 'Rachel Adams', department: 'Marketing', scheduledDays: [{ day: 'Monday', shift: 'Morning' }, { day: 'Tuesday', shift: 'Afternoon' }, { day: 'Thursday', shift: 'Full Day' }] },
+  { id: '14', name: 'Kevin Patel', department: 'Sales', scheduledDays: [{ day: 'Wednesday', shift: 'Full Day' }, { day: 'Thursday', shift: 'Night' }, { day: 'Friday', shift: 'Morning' }] },
+  { id: '15', name: 'Jessica Liu', department: 'HR', scheduledDays: [{ day: 'Tuesday', shift: 'Morning' }, { day: 'Thursday', shift: 'Afternoon' }] },
 ]
 
 // ────────────────────────────────────────────
@@ -150,8 +174,122 @@ function getWeekLabel(weekOffset: number) {
   return `${format(start, 'MMM d')} - ${format(end, 'd, yyyy')}`
 }
 
+function getWeekKey(weekOffset: number) {
+  const dates = getWeekDates(weekOffset)
+  const monday = dates[0]
+  if (!monday) return ''
+  return format(monday, 'yyyy-MM-dd')
+}
+
+function getScheduleKey(weekOffset: number, day: string) {
+  return `${getWeekKey(weekOffset)}-${day}`
+}
+
 function getInitials(name: string) {
   return name.split(' ').map(n => n?.[0] ?? '').join('').toUpperCase()
+}
+
+function getWeekOffsetLabel(weekOffset: number): string {
+  if (weekOffset === 0) return 'This Week'
+  if (weekOffset === 1) return 'Next Week'
+  return `+${weekOffset} Weeks`
+}
+
+function parseCSV(text: string): { name: string; department: string; email?: string }[] {
+  const lines = text.trim().split('\n')
+  if (lines.length < 2) return []
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+  const nameIdx = headers.findIndex(h => h.includes('name'))
+  const deptIdx = headers.findIndex(h => h.includes('department') || h.includes('dept') || h.includes('team'))
+  const emailIdx = headers.findIndex(h => h.includes('email'))
+
+  if (nameIdx < 0) return []
+
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const cols = line.split(',').map(c => c.trim())
+    return {
+      name: cols[nameIdx] || '',
+      department: deptIdx >= 0 ? (cols[deptIdx] || 'Unassigned') : 'Unassigned',
+      email: emailIdx >= 0 ? cols[emailIdx] : undefined,
+    }
+  }).filter(r => r.name)
+}
+
+function getMonthButtons(): { label: string; weekOffset: number }[] {
+  const now = new Date()
+  const buttons: { label: string; weekOffset: number }[] = []
+  for (let i = 0; i < 6; i++) {
+    const target = addMonths(now, i)
+    const label = format(target, 'MMM yyyy')
+    const monthStart = startOfMonth(target)
+    const nowMonday = startOfWeek(now, { weekStartsOn: 1 })
+    const targetMonday = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const diffW = differenceInWeeks(targetMonday, nowMonday)
+    buttons.push({ label, weekOffset: Math.max(0, diffW) })
+  }
+  return buttons
+}
+
+function getMonthlyDayCount(userSchedule: Record<string, ShiftEntry>, weekOffset: number): { count: number; monthLabel: string; totalWorkdays: number } {
+  const dates = getWeekDates(weekOffset)
+  const viewedDate = dates[0]
+  if (!viewedDate) return { count: 0, monthLabel: '', totalWorkdays: 0 }
+  const monthLabel = format(viewedDate, 'MMMM yyyy')
+  const monthNum = viewedDate.getMonth()
+  const yearNum = viewedDate.getFullYear()
+
+  let count = 0
+  Object.keys(userSchedule).forEach(key => {
+    const datePart = key.substring(0, 10)
+    const keyDate = new Date(datePart + 'T12:00:00')
+    if (keyDate.getMonth() === monthNum && keyDate.getFullYear() === yearNum) {
+      count++
+    }
+  })
+
+  // Calculate total workdays in month
+  const daysInMonth = getDaysInMonth(viewedDate)
+  let totalWorkdays = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayOfWeek = getDay(new Date(yearNum, monthNum, d))
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) totalWorkdays++
+  }
+
+  return { count, monthLabel, totalWorkdays }
+}
+
+function exportToCSV(members: TeamMember[], userSchedule: Record<string, ShiftEntry>, weekOffset: number, currentUserName: string, currentUserDepartment: string) {
+  const weekKey = getWeekKey(weekOffset)
+  const header = 'Name,Department,Monday,Tuesday,Wednesday,Thursday,Friday\n'
+  const userRow = `${currentUserName},${currentUserDepartment},${WEEKDAYS.map(d => {
+    const key = `${weekKey}-${d}`
+    return userSchedule[key]?.shift || 'Remote'
+  }).join(',')}\n`
+  const teamRows = members.map(m => {
+    return `${m.name},${m.department},${WEEKDAYS.map(d => {
+      const entry = m.scheduledDays.find(sd => sd.day === d)
+      return entry ? entry.shift : 'Remote'
+    }).join(',')}`
+  }).join('\n')
+
+  const csv = header + userRow + teamRows
+  const blob = new Blob([csv], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `office-schedule-${weekKey}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function ShiftIcon({ shift, className }: { shift: string; className?: string }) {
+  switch (shift) {
+    case 'Morning': return <FiSun className={className || 'w-3 h-3'} />
+    case 'Afternoon': return <FiSun className={className || 'w-3 h-3'} />
+    case 'Full Day': return <FiClock className={className || 'w-3 h-3'} />
+    case 'Night': return <FiMoon className={className || 'w-3 h-3'} />
+    default: return <FiClock className={className || 'w-3 h-3'} />
+  }
 }
 
 // ────────────────────────────────────────────
@@ -247,79 +385,209 @@ function AppSidebar({ activeView, onViewChange, collapsed, onToggleCollapse }: {
   )
 }
 
-function WeekNavigation({ weekOffset, onPrev, onNext, onReset }: {
+function MonthJumpBar({ weekOffset, onJump }: {
   weekOffset: number
-  onPrev: () => void
-  onNext: () => void
-  onReset: () => void
+  onJump: (offset: number) => void
 }) {
+  const buttons = getMonthButtons()
   return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={onPrev} className="rounded-xl h-9 w-9">
-          <FiChevronLeft className="w-4 h-4" />
-        </Button>
-        <div className="text-center min-w-[180px]">
-          <h2 className="text-base font-semibold tracking-tight text-foreground">{getWeekLabel(weekOffset)}</h2>
-        </div>
-        <Button variant="outline" size="icon" onClick={onNext} className="rounded-xl h-9 w-9">
-          <FiChevronRight className="w-4 h-4" />
-        </Button>
-      </div>
-      {weekOffset !== 0 && (
-        <Button variant="secondary" size="sm" onClick={onReset} className="rounded-xl text-xs font-medium">
-          This Week
-        </Button>
-      )}
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {buttons.map((btn, idx) => {
+        const isActive = (() => {
+          const dates = getWeekDates(weekOffset)
+          const viewedDate = dates[0]
+          if (!viewedDate) return false
+          const viewedLabel = format(viewedDate, 'MMM yyyy')
+          return viewedLabel === btn.label
+        })()
+        return (
+          <button
+            key={idx}
+            onClick={() => onJump(btn.weekOffset)}
+            className={cn(
+              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+              isActive
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground"
+            )}
+          >
+            {btn.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function DayCell({ day, date, isActive, onClick }: {
+function MonthlyCounter({ userSchedule, weekOffset }: {
+  userSchedule: Record<string, ShiftEntry>
+  weekOffset: number
+}) {
+  const { count, monthLabel, totalWorkdays } = getMonthlyDayCount(userSchedule, weekOffset)
+  const progressPercent = totalWorkdays > 0 ? Math.round((count / totalWorkdays) * 100) : 0
+
+  return (
+    <Card className="glass-panel border-border bg-primary/5">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 flex-shrink-0">
+            <FiCalendar className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-muted-foreground mb-0.5">{monthLabel || 'Current Month'}</p>
+            <div className="flex items-baseline gap-1.5 mb-1.5">
+              <span className="text-2xl font-bold text-foreground">{count}</span>
+              <span className="text-sm text-muted-foreground">/ {totalWorkdays} days planned</span>
+            </div>
+            <Progress value={progressPercent} className="h-2" />
+          </div>
+          <div className="text-right flex-shrink-0">
+            <span className="text-lg font-bold text-primary">{progressPercent}%</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function WeekNavigation({ weekOffset, onPrev, onNext, onReset, onJump }: {
+  weekOffset: number
+  onPrev: () => void
+  onNext: () => void
+  onReset: () => void
+  onJump: (offset: number) => void
+}) {
+  const atMin = weekOffset <= 0
+  const atMax = weekOffset >= 26
+
+  return (
+    <div className="space-y-3">
+      <MonthJumpBar weekOffset={weekOffset} onJump={onJump} />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" onClick={onPrev} disabled={atMin} className="rounded-xl h-9 w-9">
+            <FiChevronLeft className="w-4 h-4" />
+          </Button>
+          <div className="text-center min-w-[180px]">
+            <h2 className="text-base font-semibold tracking-tight text-foreground">{getWeekLabel(weekOffset)}</h2>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{getWeekOffsetLabel(weekOffset)}</p>
+          </div>
+          <Button variant="outline" size="icon" onClick={onNext} disabled={atMax} className="rounded-xl h-9 w-9">
+            <FiChevronRight className="w-4 h-4" />
+          </Button>
+        </div>
+        {weekOffset !== 0 && (
+          <Button variant="secondary" size="sm" onClick={onReset} className="rounded-xl text-xs font-medium">
+            This Week
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ShiftSelector({ onSelect, onCancel }: {
+  onSelect: (shift: ShiftType) => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-1 mt-1 w-full">
+      <p className="text-[10px] text-muted-foreground font-medium text-center mb-0.5">Select shift:</p>
+      <div className="grid grid-cols-2 gap-1">
+        {SHIFT_TYPES.map(shift => (
+          <button
+            key={shift}
+            onClick={(e) => { e.stopPropagation(); onSelect(shift) }}
+            className={cn("flex items-center gap-1 px-1.5 py-1 rounded-lg text-[10px] font-medium transition-all hover:scale-105", SHIFT_COLORS[shift])}
+          >
+            <ShiftIcon shift={shift} className="w-2.5 h-2.5" />
+            {SHIFT_LABELS_SHORT[shift]}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onCancel() }}
+        className="text-[10px] text-muted-foreground hover:text-foreground mt-0.5 transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+function DayCell({ day, date, isActive, shiftEntry, onToggle, onShiftSelect, selectingShift, onStartSelect, onCancelSelect }: {
   day: string
   date: Date
   isActive: boolean
-  onClick: () => void
+  shiftEntry: ShiftEntry | undefined
+  onToggle: () => void
+  onShiftSelect: (shift: ShiftType) => void
+  selectingShift: boolean
+  onStartSelect: () => void
+  onCancelSelect: () => void
 }) {
+  const handleClick = () => {
+    if (isActive) {
+      onToggle()
+    } else {
+      onStartSelect()
+    }
+  }
+
   return (
-    <button
-      onClick={onClick}
+    <div
+      onClick={handleClick}
       className={cn(
-        "relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer min-h-[120px]",
+        "relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-300 cursor-pointer min-h-[130px]",
         isActive
           ? "bg-primary border-primary text-primary-foreground shadow-lg shadow-primary/25 scale-[1.02]"
           : "bg-card border-border hover:border-primary/40 hover:bg-secondary/50 hover:shadow-md"
       )}
     >
       <span className={cn("text-sm font-semibold mb-1 tracking-tight", isActive ? "text-primary-foreground" : "text-foreground")}>{day}</span>
-      <span className={cn("text-xs mb-3", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>{format(date, 'MMM d')}</span>
-      {isActive ? (
-        <Badge className="bg-white/20 text-primary-foreground border-0 text-xs font-medium">In Office</Badge>
+      <span className={cn("text-xs mb-2", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>{format(date, 'MMM d')}</span>
+
+      {isActive && shiftEntry ? (
+        <div className="flex flex-col items-center gap-1">
+          <Badge className="bg-white/20 text-primary-foreground border-0 text-xs font-medium">In Office</Badge>
+          <Badge className={cn("text-[10px] border-0 flex items-center gap-0.5", SHIFT_COLORS[shiftEntry.shift])}>
+            <ShiftIcon shift={shiftEntry.shift} className="w-2.5 h-2.5" />
+            {shiftEntry.shift}
+          </Badge>
+        </div>
+      ) : selectingShift ? (
+        <ShiftSelector onSelect={onShiftSelect} onCancel={onCancelSelect} />
       ) : (
         <span className="text-xs text-muted-foreground font-medium">Not Planned</span>
       )}
+
       {isActive && (
         <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-white/60" />
       )}
-    </button>
+    </div>
   )
 }
 
-function TeamPresencePanel({ teamMembers, userDays, departmentFilter, onDeptChange }: {
+function TeamPresencePanel({ teamMembers, userSchedule, weekOffset, departmentFilter, onDeptChange, showAllTeams, onShowAllTeamsChange, currentUserDepartment }: {
   teamMembers: TeamMember[]
-  userDays: string[]
+  userSchedule: Record<string, ShiftEntry>
+  weekOffset: number
   departmentFilter: string
   onDeptChange: (dept: string) => void
+  showAllTeams: boolean
+  onShowAllTeamsChange: (v: boolean) => void
+  currentUserDepartment: string
 }) {
-  const filteredMembers = departmentFilter === 'All Teams'
+  const effectiveFilter = showAllTeams ? departmentFilter : (departmentFilter === 'All Teams' ? currentUserDepartment : departmentFilter)
+  const filteredMembers = effectiveFilter === 'All Teams'
     ? teamMembers
-    : teamMembers.filter(m => m.department === departmentFilter)
+    : teamMembers.filter(m => m.department === effectiveFilter)
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold tracking-tight text-foreground">Team Presence</h3>
-        <Select value={departmentFilter} onValueChange={onDeptChange}>
+        <Select value={showAllTeams ? departmentFilter : effectiveFilter} onValueChange={onDeptChange}>
           <SelectTrigger className="w-[140px] h-8 text-xs rounded-xl">
             <SelectValue />
           </SelectTrigger>
@@ -331,11 +599,19 @@ function TeamPresencePanel({ teamMembers, userDays, departmentFilter, onDeptChan
         </Select>
       </div>
 
-      <ScrollArea className="h-[280px]">
+      <div className="flex items-center gap-2">
+        <Switch id="show-all-teams-presence" checked={showAllTeams} onCheckedChange={onShowAllTeamsChange} />
+        <Label htmlFor="show-all-teams-presence" className="text-xs text-muted-foreground cursor-pointer">Show All Teams</Label>
+      </div>
+
+      <ScrollArea className="h-[240px]">
         <Accordion type="multiple" className="space-y-1">
           {WEEKDAYS.map(day => {
-            const membersOnDay = filteredMembers.filter(m => m.scheduledDays.includes(day))
-            const userIsIn = userDays.includes(day)
+            const membersOnDay = filteredMembers.filter(m => m.scheduledDays.some(sd => sd.day === day))
+            const weekKey = getWeekKey(weekOffset)
+            const schedKey = `${weekKey}-${day}`
+            const userIsIn = schedKey in userSchedule
+            const userShift = userSchedule[schedKey]?.shift
             const totalCount = membersOnDay.length + (userIsIn ? 1 : 0)
             const grouped: Record<string, TeamMember[]> = {}
             membersOnDay.forEach(m => {
@@ -362,24 +638,37 @@ function TeamPresencePanel({ teamMembers, userDays, departmentFilter, onDeptChan
                         <div className="flex items-center gap-2">
                           <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                           <span className="text-xs font-medium text-primary">You</span>
+                          {userShift && (
+                            <Badge className={cn("text-[9px] h-4 px-1 border-0", SHIFT_COLORS[userShift])}>
+                              {userShift}
+                            </Badge>
+                          )}
                         </div>
                       )}
                       {Object.entries(grouped).map(([dept, members]) => (
                         <div key={dept}>
                           <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">{dept}</p>
                           <div className="flex flex-wrap gap-1">
-                            {members.map(m => (
-                              <span
-                                key={m.id}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-xs font-medium text-secondary-foreground"
-                              >
+                            {members.map(m => {
+                              const memberShift = m.scheduledDays.find(sd => sd.day === day)?.shift
+                              return (
                                 <span
-                                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: DEPT_COLORS[m.department] || 'gray' }}
-                                />
-                                {m.name.split(' ')[0]}
-                              </span>
-                            ))}
+                                  key={m.id}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary text-xs font-medium text-secondary-foreground"
+                                >
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: DEPT_COLORS[m.department] || 'gray' }}
+                                  />
+                                  {m.name.split(' ')[0]}
+                                  {memberShift && (
+                                    <Badge className={cn("text-[8px] h-3.5 px-1 border-0 ml-0.5", SHIFT_COLORS[memberShift])}>
+                                      {SHIFT_LABELS_SHORT[memberShift] || memberShift}
+                                    </Badge>
+                                  )}
+                                </span>
+                              )
+                            })}
                           </div>
                         </div>
                       ))}
@@ -483,32 +772,47 @@ function ChatDrawer({ isOpen, onToggle, messages, onSend, loading }: {
   )
 }
 
-function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, departmentFilter, onDeptChange }: {
+function TeamViewScreen({ teamMembers, userSchedule, weekOffset, searchTerm, onSearchChange, departmentFilter, onDeptChange, showAllTeams, onShowAllTeamsChange, currentUserDepartment, onExport }: {
   teamMembers: TeamMember[]
-  userDays: string[]
+  userSchedule: Record<string, ShiftEntry>
+  weekOffset: number
   searchTerm: string
   onSearchChange: (s: string) => void
   departmentFilter: string
   onDeptChange: (d: string) => void
+  showAllTeams: boolean
+  onShowAllTeamsChange: (v: boolean) => void
+  currentUserDepartment: string
+  onExport: () => void
 }) {
+  const effectiveFilter = showAllTeams ? departmentFilter : (departmentFilter === 'All Teams' ? currentUserDepartment : departmentFilter)
   const filtered = teamMembers.filter(m => {
-    const matchesDept = departmentFilter === 'All Teams' || m.department === departmentFilter
+    const matchesDept = effectiveFilter === 'All Teams' || m.department === effectiveFilter
     const matchesSearch = !searchTerm || m.name.toLowerCase().includes(searchTerm.toLowerCase())
     return matchesDept && matchesSearch
   })
 
+  const weekKey = getWeekKey(weekOffset)
+
   const dayCounts: Record<string, number> = {}
   WEEKDAYS.forEach(day => {
-    const teamCount = teamMembers.filter(m => m.scheduledDays.includes(day)).length
-    const userIn = userDays.includes(day) ? 1 : 0
+    const teamCount = teamMembers.filter(m => m.scheduledDays.some(sd => sd.day === day)).length
+    const schedKey = `${weekKey}-${day}`
+    const userIn = schedKey in userSchedule ? 1 : 0
     dayCounts[day] = teamCount + userIn
   })
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground mb-1">Team View</h1>
-        <p className="text-sm text-muted-foreground">See who is in the office each day this week</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground mb-1">Team View</h1>
+          <p className="text-sm text-muted-foreground">See who is in the office each day this week</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onExport} className="rounded-xl text-xs font-medium flex items-center gap-1.5">
+          <FiDownload className="w-3.5 h-3.5" />
+          Export CSV
+        </Button>
       </div>
 
       {/* Summary Bar */}
@@ -525,7 +829,7 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-xs">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -535,7 +839,7 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
             className="pl-9 h-9 text-sm rounded-xl"
           />
         </div>
-        <Select value={departmentFilter} onValueChange={onDeptChange}>
+        <Select value={showAllTeams ? departmentFilter : effectiveFilter} onValueChange={onDeptChange}>
           <SelectTrigger className="w-[160px] h-9 text-sm rounded-xl">
             <SelectValue />
           </SelectTrigger>
@@ -545,6 +849,10 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
             ))}
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-2">
+          <Switch id="show-all-teams-tv" checked={showAllTeams} onCheckedChange={onShowAllTeamsChange} />
+          <Label htmlFor="show-all-teams-tv" className="text-xs text-muted-foreground cursor-pointer">Show All Teams</Label>
+        </div>
       </div>
 
       {/* Table */}
@@ -571,19 +879,28 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
                     </div>
                   </div>
                 </td>
-                {WEEKDAYS.map(day => (
-                  <td key={day} className="text-center px-3 py-3">
-                    {userDays.includes(day) ? (
-                      <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary shadow-md shadow-primary/20">
-                        <HiOutlineOfficeBuilding className="w-3.5 h-3.5 text-primary-foreground" />
-                      </div>
-                    ) : (
-                      <div className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border text-muted-foreground">
-                        <span className="text-xs">--</span>
-                      </div>
-                    )}
-                  </td>
-                ))}
+                {WEEKDAYS.map(day => {
+                  const schedKey = `${weekKey}-${day}`
+                  const entry = userSchedule[schedKey]
+                  return (
+                    <td key={day} className="text-center px-3 py-3">
+                      {entry ? (
+                        <div className="inline-flex flex-col items-center gap-0.5">
+                          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary shadow-md shadow-primary/20">
+                            <HiOutlineOfficeBuilding className="w-3.5 h-3.5 text-primary-foreground" />
+                          </div>
+                          <Badge className={cn("text-[8px] h-3.5 px-1 border-0", SHIFT_COLORS[entry.shift])}>
+                            {SHIFT_LABELS_SHORT[entry.shift]}
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border text-muted-foreground">
+                          <span className="text-xs">--</span>
+                        </div>
+                      )}
+                    </td>
+                  )
+                })}
               </tr>
 
               {filtered.map(member => (
@@ -621,6 +938,7 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
                             <div>
                               <p className="font-semibold text-sm">{member.name}</p>
                               <p className="text-xs text-muted-foreground">{member.department}</p>
+                              {member.email && <p className="text-xs text-muted-foreground">{member.email}</p>}
                             </div>
                           </div>
                           <Separator />
@@ -628,7 +946,11 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
                             <p className="text-xs font-medium text-muted-foreground mb-2">This week in office:</p>
                             <div className="flex flex-wrap gap-1">
                               {member.scheduledDays.length > 0
-                                ? member.scheduledDays.map(d => <Badge key={d} className="text-xs">{d}</Badge>)
+                                ? member.scheduledDays.map(sd => (
+                                  <Badge key={sd.day} className={cn("text-xs flex items-center gap-0.5", SHIFT_COLORS[sd.shift] || '')}>
+                                    {sd.day} <span className="text-[9px]">({sd.shift})</span>
+                                  </Badge>
+                                ))
                                 : <span className="text-xs text-muted-foreground">No days planned</span>
                               }
                             </div>
@@ -637,22 +959,30 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
                       </PopoverContent>
                     </Popover>
                   </td>
-                  {WEEKDAYS.map(day => (
-                    <td key={day} className="text-center px-3 py-3">
-                      {member.scheduledDays.includes(day) ? (
-                        <div
-                          className="inline-flex items-center justify-center w-8 h-8 rounded-full"
-                          style={{ backgroundColor: DEPT_COLORS[member.department] || '#6b7280' }}
-                        >
-                          <HiOutlineOfficeBuilding className="w-3.5 h-3.5 text-white" />
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border text-muted-foreground">
-                          <span className="text-xs">--</span>
-                        </div>
-                      )}
-                    </td>
-                  ))}
+                  {WEEKDAYS.map(day => {
+                    const dayEntry = member.scheduledDays.find(sd => sd.day === day)
+                    return (
+                      <td key={day} className="text-center px-3 py-3">
+                        {dayEntry ? (
+                          <div className="inline-flex flex-col items-center gap-0.5">
+                            <div
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-full"
+                              style={{ backgroundColor: DEPT_COLORS[member.department] || '#6b7280' }}
+                            >
+                              <HiOutlineOfficeBuilding className="w-3.5 h-3.5 text-white" />
+                            </div>
+                            <Badge className={cn("text-[8px] h-3.5 px-1 border-0", SHIFT_COLORS[dayEntry.shift])}>
+                              {SHIFT_LABELS_SHORT[dayEntry.shift] || dayEntry.shift}
+                            </Badge>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-border text-muted-foreground">
+                            <span className="text-xs">--</span>
+                          </div>
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
 
@@ -671,12 +1001,88 @@ function TeamViewScreen({ teamMembers, userDays, searchTerm, onSearchChange, dep
   )
 }
 
-function SettingsScreen() {
+function SettingsScreen({ currentUserDepartment, onDepartmentChange, teamMembers, onImportMembers }: {
+  currentUserDepartment: string
+  onDepartmentChange: (dept: string) => void
+  teamMembers: TeamMember[]
+  onImportMembers: (members: { name: string; department: string; email?: string }[]) => void
+}) {
+  const [dragActive, setDragActive] = useState(false)
+  const [csvPreview, setCsvPreview] = useState<{ name: string; department: string; email?: string }[] | null>(null)
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFile = (file: File) => {
+    setImportStatus(null)
+    if (!file.name.endsWith('.csv')) {
+      setImportStatus({ type: 'error', message: 'Only CSV files are supported. Please upload a .csv file.' })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const text = e.target?.result
+      if (typeof text !== 'string') {
+        setImportStatus({ type: 'error', message: 'Failed to read file.' })
+        return
+      }
+      const parsed = parseCSV(text)
+      if (parsed.length === 0) {
+        setImportStatus({ type: 'error', message: 'No valid rows found. Ensure CSV has a "Name" column header.' })
+        return
+      }
+      setCsvPreview(parsed)
+    }
+    reader.onerror = () => {
+      setImportStatus({ type: 'error', message: 'Failed to read the file.' })
+    }
+    reader.readAsText(file)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    const file = e.dataTransfer?.files?.[0]
+    if (file) handleFile(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+  }
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleFile(file)
+    if (e.target) e.target.value = ''
+  }
+
+  const confirmImport = () => {
+    if (!csvPreview) return
+    onImportMembers(csvPreview)
+    setImportStatus({ type: 'success', message: `Successfully imported ${csvPreview.length} team member${csvPreview.length !== 1 ? 's' : ''}.` })
+    setCsvPreview(null)
+  }
+
+  const cancelImport = () => {
+    setCsvPreview(null)
+    setImportStatus(null)
+  }
+
+  const selectableDepts = DEPARTMENTS.filter(d => d !== 'All Teams')
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground mb-1">Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage your profile and notification preferences</p>
+        <p className="text-sm text-muted-foreground">Manage your profile, team, and notification preferences</p>
       </div>
 
       <Card className="glass-panel border-border">
@@ -699,9 +1105,122 @@ function SettingsScreen() {
             </div>
             <div>
               <Label className="text-sm font-medium">Department</Label>
-              <Input defaultValue="Engineering" className="mt-1 rounded-xl" />
+              <Select value={currentUserDepartment} onValueChange={onDepartmentChange}>
+                <SelectTrigger className="mt-1 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectableDepts.map(d => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">This determines which team you see by default in Team Presence and Team View.</p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Import Team CSV */}
+      <Card className="glass-panel border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FiUpload className="w-4 h-4" />
+            Import Team
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">Upload a CSV file with columns: Name, Department, Email (optional)</p>
+
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              "relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200",
+              dragActive
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/40 hover:bg-secondary/30"
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              onChange={handleFileInput}
+              className="hidden"
+            />
+            <FiFile className="w-8 h-8 mx-auto text-muted-foreground/40 mb-3" />
+            <p className="text-sm font-medium text-foreground mb-1">Drop a CSV file here or click to browse</p>
+            <p className="text-xs text-muted-foreground">Accepts .csv files</p>
+          </div>
+
+          {/* Import Status */}
+          {importStatus && (
+            <div className={cn(
+              "flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-300",
+              importStatus.type === 'success'
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-red-50 border-red-200 text-red-700"
+            )}>
+              {importStatus.type === 'success' ? <FiCheck className="w-4 h-4 flex-shrink-0" /> : <FiX className="w-4 h-4 flex-shrink-0" />}
+              <p className="text-sm font-medium">{importStatus.message}</p>
+            </div>
+          )}
+
+          {/* CSV Preview Table */}
+          {csvPreview && csvPreview.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-foreground">Preview ({csvPreview.length} rows)</p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={cancelImport} className="rounded-xl text-xs">
+                    <FiX className="w-3 h-3 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={confirmImport} className="rounded-xl text-xs">
+                    <FiCheck className="w-3 h-3 mr-1" />
+                    Confirm Import
+                  </Button>
+                </div>
+              </div>
+              <div className="border border-border rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-secondary/30 border-b border-border">
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Name</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Department</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-muted-foreground">Email</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {csvPreview.slice(0, 10).map((row, idx) => (
+                      <tr key={idx} className="border-b border-border last:border-0">
+                        <td className="px-3 py-2 text-foreground">{row.name}</td>
+                        <td className="px-3 py-2">
+                          <Badge variant="secondary" className={cn("text-[10px]", DEPT_BG_CLASSES[row.department] || 'bg-secondary text-secondary-foreground')}>
+                            {row.department}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{row.email || '--'}</td>
+                      </tr>
+                    ))}
+                    {csvPreview.length > 10 && (
+                      <tr>
+                        <td colSpan={3} className="px-3 py-2 text-xs text-muted-foreground text-center">
+                          ...and {csvPreview.length - 10} more rows
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <Separator />
+          <p className="text-xs text-muted-foreground">Current team: {teamMembers.length} members loaded</p>
         </CardContent>
       </Card>
 
@@ -760,7 +1279,7 @@ export default function Page() {
   const [activeView, setActiveView] = useState<ActiveView>('schedule')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [weekOffset, setWeekOffset] = useState(0)
-  const [userDays, setUserDays] = useState<string[]>([])
+  const [userSchedule, setUserSchedule] = useState<Record<string, ShiftEntry>>({})
   const [departmentFilter, setDepartmentFilter] = useState('All Teams')
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -770,20 +1289,34 @@ export default function Page() {
   const [showSampleData, setShowSampleData] = useState(false)
   const [teamSearchTerm, setTeamSearchTerm] = useState('')
   const [teamDeptFilter, setTeamDeptFilter] = useState('All Teams')
+  const [selectingShiftDay, setSelectingShiftDay] = useState<string | null>(null)
+  const [currentUserDepartment, setCurrentUserDepartment] = useState('Engineering')
+  const [showAllTeamsPresence, setShowAllTeamsPresence] = useState(false)
+  const [showAllTeamsTV, setShowAllTeamsTV] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(MOCK_TEAM_DATA)
+
+  // Derive userDays from userSchedule for the current weekOffset (for backward compat in summary, etc.)
+  const weekKey = getWeekKey(weekOffset)
+  const currentWeekUserDays: string[] = WEEKDAYS.filter(d => `${weekKey}-${d}` in userSchedule)
 
   // Sample data toggle
   useEffect(() => {
     if (showSampleData) {
-      setUserDays(['Monday', 'Wednesday', 'Thursday'])
+      const sampleWeekKey = getWeekKey(0)
+      setUserSchedule({
+        [`${sampleWeekKey}-Monday`]: { shift: 'Morning' },
+        [`${sampleWeekKey}-Wednesday`]: { shift: 'Full Day' },
+        [`${sampleWeekKey}-Thursday`]: { shift: 'Afternoon' },
+      })
       setChatMessages([
         { id: 's1', role: 'user', text: "I'll be in Monday, Wednesday and Thursday this week", timestamp: new Date().toISOString() },
-        { id: 's2', role: 'assistant', text: "Got it! I've marked **Monday**, **Wednesday**, and **Thursday** as your in-office days. You'll overlap with 6 teammates on Monday and 5 on Wednesday.", timestamp: new Date().toISOString() },
+        { id: 's2', role: 'assistant', text: "Got it! I've marked **Monday** (Morning), **Wednesday** (Full Day), and **Thursday** (Afternoon) as your in-office days. You'll overlap with 6 teammates on Monday and 5 on Wednesday.", timestamp: new Date().toISOString() },
         { id: 's3', role: 'user', text: 'Who else is in on Thursday?', timestamp: new Date().toISOString() },
-        { id: 's4', role: 'assistant', text: "On **Thursday**, the following teammates are also in the office:\n\n- **Engineering:** Sarah Chen, Maria Garcia\n- **Design:** Emily Brown, Tom Zhang\n- **Marketing:** David Lee, Rachel Adams\n- **Sales:** Michael Park, Kevin Patel\n- **HR:** Jessica Liu\n\nThat's 9 people plus you - great day for collaboration!", timestamp: new Date().toISOString() },
+        { id: 's4', role: 'assistant', text: "On **Thursday**, the following teammates are also in the office:\n\n- **Engineering:** Sarah Chen (Afternoon), Maria Garcia (Full Day)\n- **Design:** Emily Brown (Full Day), Tom Zhang (Morning)\n- **Marketing:** David Lee (Morning), Rachel Adams (Full Day)\n- **Sales:** Michael Park (Afternoon), Kevin Patel (Night)\n- **HR:** Jessica Liu (Afternoon)\n\nThat's 9 people plus you - great day for collaboration!", timestamp: new Date().toISOString() },
       ])
       setChatOpen(true)
     } else {
-      setUserDays([])
+      setUserSchedule({})
       setChatMessages([])
     }
   }, [showSampleData])
@@ -796,25 +1329,64 @@ export default function Page() {
     }
   }, [statusMessage])
 
+  const handleShiftSelect = useCallback((day: string, shift: ShiftType) => {
+    const key = getScheduleKey(weekOffset, day)
+    setUserSchedule(prev => ({ ...prev, [key]: { shift } }))
+    setSelectingShiftDay(null)
+    setStatusMessage(`Added ${day} (${shift}) to your schedule`)
+  }, [weekOffset])
+
   const toggleDay = useCallback((day: string) => {
-    setUserDays(prev => {
-      const isCurrentlyIn = prev.includes(day)
-      const next = isCurrentlyIn ? prev.filter(d => d !== day) : [...prev, day]
-      setStatusMessage(isCurrentlyIn ? `Removed ${day} from your schedule` : `Added ${day} to your schedule`)
-      return next
-    })
+    const key = getScheduleKey(weekOffset, day)
+    const isCurrentlyIn = key in userSchedule
+    if (isCurrentlyIn) {
+      setUserSchedule(prev => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+      setStatusMessage(`Removed ${day} from your schedule`)
+    }
+    // If not active, the DayCell component will start shift selection
+  }, [weekOffset, userSchedule])
+
+  const handleImportMembers = useCallback((imported: { name: string; department: string; email?: string }[]) => {
+    const newMembers: TeamMember[] = imported.map((m, idx) => ({
+      id: `imported-${Date.now()}-${idx}`,
+      name: m.name,
+      department: m.department,
+      email: m.email,
+      scheduledDays: [],
+    }))
+    setTeamMembers(prev => [...prev, ...newMembers])
   }, [])
+
+  const handleExport = useCallback(() => {
+    exportToCSV(teamMembers, userSchedule, weekOffset, 'Current User', currentUserDepartment)
+  }, [teamMembers, userSchedule, weekOffset, currentUserDepartment])
 
   const buildContext = useCallback(() => {
     const weekLabel = getWeekLabel(weekOffset)
+    const wk = getWeekKey(weekOffset)
+    const userDayInfo = WEEKDAYS.map(day => {
+      const key = `${wk}-${day}`
+      const entry = userSchedule[key]
+      if (entry) return `${day} (${entry.shift})`
+      return null
+    }).filter(Boolean)
+
     const dayBreakdown = WEEKDAYS.map(day => {
-      const names = MOCK_TEAM_DATA.filter(m => m.scheduledDays.includes(day)).map(m => m.name)
-      if (userDays.includes(day)) names.unshift('You')
+      const names = teamMembers.filter(m => m.scheduledDays.some(sd => sd.day === day)).map(m => {
+        const sd = m.scheduledDays.find(s => s.day === day)
+        return `${m.name}${sd ? ` (${sd.shift})` : ''}`
+      })
+      const key = `${wk}-${day}`
+      if (userSchedule[key]) names.unshift(`You (${userSchedule[key].shift})`)
       return `  ${day}: ${names.length > 0 ? names.join(', ') : 'No one'}`
     }).join('\n')
 
-    return `Context:\n- Current user's scheduled days: ${userDays.length > 0 ? userDays.join(', ') : 'None'}\n- Current week: ${weekLabel}\n- Team members in office this week breakdown:\n${dayBreakdown}`
-  }, [weekOffset, userDays])
+    return `Context:\n- Current user's scheduled days: ${userDayInfo.length > 0 ? userDayInfo.join(', ') : 'None'}\n- Current week: ${weekLabel}\n- Team members in office this week breakdown:\n${dayBreakdown}`
+  }, [weekOffset, userSchedule, teamMembers])
 
   const sendMessage = useCallback(async (userMessage: string) => {
     const newUserMsg: ChatMessage = {
@@ -834,13 +1406,28 @@ export default function Page() {
       const parsed = parseAgentResponse(result)
 
       if (parsed.action === 'mark_days' && parsed.days.length > 0) {
-        setUserDays(prev => {
-          const newDays = [...new Set([...prev, ...parsed.days])]
-          return newDays
+        const wk = getWeekKey(weekOffset)
+        setUserSchedule(prev => {
+          const next = { ...prev }
+          parsed.days.forEach(day => {
+            const key = `${wk}-${day}`
+            if (!(key in next)) {
+              next[key] = { shift: 'Full Day' }
+            }
+          })
+          return next
         })
-        setStatusMessage(`Marked ${parsed.days.join(', ')} as in-office`)
+        setStatusMessage(`Marked ${parsed.days.join(', ')} as in-office (Full Day)`)
       } else if (parsed.action === 'remove_days' && parsed.days.length > 0) {
-        setUserDays(prev => prev.filter(d => !parsed.days.includes(d)))
+        const wk = getWeekKey(weekOffset)
+        setUserSchedule(prev => {
+          const next = { ...prev }
+          parsed.days.forEach(day => {
+            const key = `${wk}-${day}`
+            delete next[key]
+          })
+          return next
+        })
         setStatusMessage(`Removed ${parsed.days.join(', ')} from your schedule`)
       }
 
@@ -863,7 +1450,7 @@ export default function Page() {
       setChatLoading(false)
       setActiveAgentId(null)
     }
-  }, [buildContext])
+  }, [buildContext, weekOffset])
 
   const weekDates = getWeekDates(weekOffset)
 
@@ -895,6 +1482,12 @@ export default function Page() {
                 </h1>
               </div>
               <div className="flex items-center gap-3">
+                {activeView === 'schedule' && (
+                  <Button variant="outline" size="sm" onClick={handleExport} className="rounded-xl text-xs font-medium flex items-center gap-1.5">
+                    <FiDownload className="w-3.5 h-3.5" />
+                    Export
+                  </Button>
+                )}
                 <Label htmlFor="sample-toggle" className="text-xs font-medium text-muted-foreground cursor-pointer">Sample Data</Label>
                 <Switch id="sample-toggle" checked={showSampleData} onCheckedChange={setShowSampleData} />
               </div>
@@ -906,17 +1499,21 @@ export default function Page() {
             {activeView === 'schedule' && (
               <div className="flex gap-6 flex-col lg:flex-row">
                 {/* Left: Calendar */}
-                <div className="flex-1 lg:w-[65%] space-y-6">
+                <div className="flex-1 lg:w-[65%] space-y-5">
                   <div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground mb-1">My Schedule</h1>
-                    <p className="text-sm text-muted-foreground">Click days to mark when you will be in the office</p>
+                    <p className="text-sm text-muted-foreground">Click days to mark when you will be in the office. Choose your shift type for each day.</p>
                   </div>
+
+                  {/* Monthly Counter */}
+                  <MonthlyCounter userSchedule={userSchedule} weekOffset={weekOffset} />
 
                   <WeekNavigation
                     weekOffset={weekOffset}
-                    onPrev={() => setWeekOffset(prev => prev - 1)}
-                    onNext={() => setWeekOffset(prev => prev + 1)}
+                    onPrev={() => setWeekOffset(prev => Math.max(0, prev - 1))}
+                    onNext={() => setWeekOffset(prev => Math.min(26, prev + 1))}
                     onReset={() => setWeekOffset(0)}
+                    onJump={(offset) => setWeekOffset(Math.max(0, Math.min(26, offset)))}
                   />
 
                   {/* Day Grid */}
@@ -924,13 +1521,21 @@ export default function Page() {
                     {WEEKDAYS.map((day, idx) => {
                       const date = weekDates[idx]
                       if (!date) return null
+                      const key = getScheduleKey(weekOffset, day)
+                      const isActive = key in userSchedule
+                      const shiftEntry = userSchedule[key]
                       return (
                         <DayCell
-                          key={day}
+                          key={`${weekKey}-${day}`}
                           day={day}
                           date={date}
-                          isActive={userDays.includes(day)}
-                          onClick={() => toggleDay(day)}
+                          isActive={isActive}
+                          shiftEntry={shiftEntry}
+                          onToggle={() => toggleDay(day)}
+                          onShiftSelect={(shift) => handleShiftSelect(day, shift)}
+                          selectingShift={selectingShiftDay === day}
+                          onStartSelect={() => setSelectingShiftDay(day)}
+                          onCancelSelect={() => setSelectingShiftDay(null)}
                         />
                       )
                     })}
@@ -945,28 +1550,35 @@ export default function Page() {
                   )}
 
                   {/* Empty State */}
-                  {userDays.length === 0 && !showSampleData && (
+                  {currentWeekUserDays.length === 0 && !showSampleData && (
                     <Card className="glass-panel border-border">
                       <CardContent className="py-8 text-center">
                         <BsPersonWorkspace className="w-10 h-10 mx-auto text-muted-foreground/30 mb-3" />
                         <p className="text-sm text-muted-foreground font-medium">No days marked yet this week -- be the first!</p>
-                        <p className="text-xs text-muted-foreground mt-1">Click on a day above or use the chat assistant</p>
+                        <p className="text-xs text-muted-foreground mt-1">Click on a day above and choose a shift, or use the chat assistant</p>
                       </CardContent>
                     </Card>
                   )}
 
                   {/* Week Summary */}
-                  {userDays.length > 0 && (
+                  {currentWeekUserDays.length > 0 && (
                     <Card className="glass-panel border-border">
                       <CardContent className="p-4">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Your Week Summary</p>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm text-foreground font-medium">
-                            {userDays.length} day{userDays.length !== 1 ? 's' : ''} in office:
+                            {currentWeekUserDays.length} day{currentWeekUserDays.length !== 1 ? 's' : ''} in office:
                           </span>
-                          {userDays.map(d => (
-                            <Badge key={d} className="text-xs">{d}</Badge>
-                          ))}
+                          {currentWeekUserDays.map(d => {
+                            const key = `${weekKey}-${d}`
+                            const entry = userSchedule[key]
+                            return (
+                              <Badge key={d} className={cn("text-xs flex items-center gap-1", entry ? SHIFT_COLORS[entry.shift] : '')}>
+                                <ShiftIcon shift={entry?.shift || 'Full Day'} className="w-3 h-3" />
+                                {d} ({entry?.shift || 'Full Day'})
+                              </Badge>
+                            )
+                          })}
                         </div>
                       </CardContent>
                     </Card>
@@ -981,10 +1593,14 @@ export default function Page() {
                   <Card className="glass-panel border-border flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-120px)]">
                     <CardContent className="p-4 flex-shrink-0">
                       <TeamPresencePanel
-                        teamMembers={MOCK_TEAM_DATA}
-                        userDays={userDays}
+                        teamMembers={teamMembers}
+                        userSchedule={userSchedule}
+                        weekOffset={weekOffset}
                         departmentFilter={departmentFilter}
                         onDeptChange={setDepartmentFilter}
+                        showAllTeams={showAllTeamsPresence}
+                        onShowAllTeamsChange={setShowAllTeamsPresence}
+                        currentUserDepartment={currentUserDepartment}
                       />
                     </CardContent>
                     <ChatDrawer
@@ -1001,16 +1617,28 @@ export default function Page() {
 
             {activeView === 'team' && (
               <TeamViewScreen
-                teamMembers={MOCK_TEAM_DATA}
-                userDays={userDays}
+                teamMembers={teamMembers}
+                userSchedule={userSchedule}
+                weekOffset={weekOffset}
                 searchTerm={teamSearchTerm}
                 onSearchChange={setTeamSearchTerm}
                 departmentFilter={teamDeptFilter}
                 onDeptChange={setTeamDeptFilter}
+                showAllTeams={showAllTeamsTV}
+                onShowAllTeamsChange={setShowAllTeamsTV}
+                currentUserDepartment={currentUserDepartment}
+                onExport={handleExport}
               />
             )}
 
-            {activeView === 'settings' && <SettingsScreen />}
+            {activeView === 'settings' && (
+              <SettingsScreen
+                currentUserDepartment={currentUserDepartment}
+                onDepartmentChange={setCurrentUserDepartment}
+                teamMembers={teamMembers}
+                onImportMembers={handleImportMembers}
+              />
+            )}
           </div>
         </main>
       </div>
